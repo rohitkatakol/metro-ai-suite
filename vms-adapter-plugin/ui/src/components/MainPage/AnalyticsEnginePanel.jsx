@@ -43,6 +43,7 @@ export default function AnalyticsEnginePanel({
   activeRuns = {},     // { [appId]: run[] } — map of active runs per app
   onStartAnalysis,   // (appId, runResult) => void  — invoked after a successful start
   onStopAnalysis,    // (appId, runId) => void  — invoked when Stop is clicked
+  lockedCamera = null, // preselected, non-editable camera (camera-specific deep-link page)
 }) {
   const [discovered, setDiscovered] = useState([]);
   const [discovering, setDiscovering] = useState(false);
@@ -56,7 +57,7 @@ export default function AnalyticsEnginePanel({
 
   const [dynamicOptions, setDynamicOptions] = useState({});
 
-  const enabledCameras = cameras.filter((c) => c.enabled);
+  const enabledCameras = lockedCamera ? [lockedCamera] : cameras.filter((c) => c.enabled);
   const selectedApp = discovered.find((a) => a.app_id === selectedAppId);
 
   // ── Discovery ────────────────────────────────────────────────────────────
@@ -85,7 +86,18 @@ export default function AnalyticsEnginePanel({
   // ── When the selected app changes, refresh form state from its schema ───
   useEffect(() => {
     if (!selectedApp) return;
-    setFormValue(initialFormState(selectedApp.params_schema));
+    const initial = initialFormState(selectedApp.params_schema);
+    if (lockedCamera) {
+      // Preselect the locked camera into every camera-bound field of this app's schema.
+      const props = selectedApp.params_schema?.properties ?? {};
+      for (const [key, field] of Object.entries(props)) {
+        const src = field?.anyOf?.find((b) => b['x-vms-source'])?.['x-vms-source'] || field?.['x-vms-source'];
+        if (src === 'camera' || src === 'camera-id' || src === 'camera-rtsp') {
+          initial[key] = lockedCamera.camera_id;
+        }
+      }
+    }
+    setFormValue(initial);
     setErrors([]);
     onAnalyticsAppChange?.(selectedApp.display_name);
   }, [selectedAppId]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -280,6 +292,7 @@ export default function AnalyticsEnginePanel({
                 cameras={enabledCameras}
                 dynamicOptions={dynamicOptions}
                 errors={errors}
+                lockedCamera={lockedCamera}
               />
               {errors.find((e) => Array.isArray(e.loc) && e.loc.includes('__root__')) && (
                 <p className="text-[0.78rem] text-red-600">

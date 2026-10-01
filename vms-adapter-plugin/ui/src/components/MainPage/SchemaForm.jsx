@@ -18,6 +18,9 @@
  *                     "lvc-pipelines"   → caller-supplied option list dropdown.
  *   - "x-format":     "textarea"        → multi-line text area.
  *   - "x-format":     "slider"          → range slider (for 0–1 float fields).
+ *
+ * When a `lockedCamera` is supplied (e.g. on a camera-specific deep-link page),
+ * camera-bound fields render as a fixed, read-only value instead of a dropdown.
  */
 
 import { useMemo } from 'react';
@@ -81,12 +84,30 @@ function fieldError(errors, key) {
   return hit ? hit.msg : null;
 }
 
+const CAMERA_SOURCES = ['camera', 'camera-id', 'camera-rtsp'];
+
+/** Fixed, disabled camera value — used on camera-specific deep-link pages. */
+function LockedCameraField({ camera }) {
+  return (
+    <Input
+      value={camera?.camera_name || camera?.name || camera?.camera_id || ''}
+      disabled
+      readOnly
+      className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF] font-mono-vms"
+    />
+  );
+}
+
 function FieldRow({ name, field, value, onChange, options, error }) {
   const f = unwrapAnyOf(field);
   const ftype = fieldType(field);
   const title = f.title || name;
   const description = f.description;
-  const required = options.requiredSet.has(name);
+  const src = f['x-vms-source'];
+  // Locked camera fields are already filled in and non-editable, so the
+  // required-field asterisk would be misleading — hide it in that case only.
+  const isLockedCameraField = !!options.lockedCamera && CAMERA_SOURCES.includes(src);
+  const required = options.requiredSet.has(name) && !isLockedCameraField;
 
   let control;
 
@@ -152,7 +173,6 @@ function FieldRow({ name, field, value, onChange, options, error }) {
 
     default: {
       // Honour x-vms-source hints for camera-bound fields and dynamic enums.
-      const src = f['x-vms-source'];
       const fmt = f['x-format'];
 
       if (fmt === 'textarea') {
@@ -187,54 +207,66 @@ function FieldRow({ name, field, value, onChange, options, error }) {
       } else if (src === 'camera-id') {
         // Camera dropdown: shows camera name, stores camera_id as value.
         // Backend resolves camera_id → RTSP stream_url before calling the analytics app.
-        const cams = (options.cameras ?? []).filter((c) => c.enabled !== false);
-        control = (
-          <Select value={value ?? ''} onValueChange={onChange}>
-            <SelectTrigger className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF]">
-              <SelectValue placeholder={cams.length === 0 ? 'No enabled cameras' : 'Select camera…'} />
-            </SelectTrigger>
-            <SelectContent>
-              {cams.map((c) => (
-                <SelectItem key={c.camera_id} value={c.camera_id}>
-                  {c.camera_name || c.name || c.camera_id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
+        if (options.lockedCamera) {
+          control = <LockedCameraField camera={options.lockedCamera} />;
+        } else {
+          const cams = (options.cameras ?? []).filter((c) => c.enabled !== false);
+          control = (
+            <Select value={value ?? ''} onValueChange={onChange}>
+              <SelectTrigger className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF]">
+                <SelectValue placeholder={cams.length === 0 ? 'No enabled cameras' : 'Select camera…'} />
+              </SelectTrigger>
+              <SelectContent>
+                {cams.map((c) => (
+                  <SelectItem key={c.camera_id} value={c.camera_id}>
+                    {c.camera_name || c.name || c.camera_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
       } else if (src === 'camera') {
-        const cams = options.cameras ?? [];
-        control = (
-          <Select value={value ?? ''} onValueChange={onChange}>
-            <SelectTrigger className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF]">
-              <SelectValue placeholder={cams.length === 0 ? 'No enabled cameras' : 'Select camera…'} />
-            </SelectTrigger>
-            <SelectContent>
-              {cams.map((c) => (
-                <SelectItem key={c.camera_id} value={c.camera_id}>
-                  {c.camera_name || c.name || c.camera_id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
+        if (options.lockedCamera) {
+          control = <LockedCameraField camera={options.lockedCamera} />;
+        } else {
+          const cams = options.cameras ?? [];
+          control = (
+            <Select value={value ?? ''} onValueChange={onChange}>
+              <SelectTrigger className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF]">
+                <SelectValue placeholder={cams.length === 0 ? 'No enabled cameras' : 'Select camera…'} />
+              </SelectTrigger>
+              <SelectContent>
+                {cams.map((c) => (
+                  <SelectItem key={c.camera_id} value={c.camera_id}>
+                    {c.camera_name || c.name || c.camera_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
       } else if (src === 'camera-rtsp') {
-        // Camera dropdown that stores camera_id; the backend resolves RTSP before dispatch.
-        const cams = (options.cameras ?? []).filter((c) => c.stream_url);
-        control = (
-          <Select value={value ?? ''} onValueChange={onChange}>
-            <SelectTrigger className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF]">
-              <SelectValue placeholder={cams.length === 0 ? 'No cameras with RTSP stream' : 'Select camera…'} />
-            </SelectTrigger>
-            <SelectContent>
-              {cams.map((c) => (
-                <SelectItem key={c.camera_id} value={c.camera_id}>
-                  {c.camera_name || c.name || c.camera_id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        );
+        if (options.lockedCamera) {
+          control = <LockedCameraField camera={options.lockedCamera} />;
+        } else {
+          // Camera dropdown that stores camera_id; the backend resolves RTSP before dispatch.
+          const cams = (options.cameras ?? []).filter((c) => c.stream_url);
+          control = (
+            <Select value={value ?? ''} onValueChange={onChange}>
+              <SelectTrigger className="h-8 text-[0.82rem] border-[#DDE3F0] bg-[#F7F9FF]">
+                <SelectValue placeholder={cams.length === 0 ? 'No cameras with RTSP stream' : 'Select camera…'} />
+              </SelectTrigger>
+              <SelectContent>
+                {cams.map((c) => (
+                  <SelectItem key={c.camera_id} value={c.camera_id}>
+                    {c.camera_name || c.name || c.camera_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          );
+        }
       } else if (src && options.dynamicOptions?.[src]) {
         const opts = options.dynamicOptions[src];
         control = (
@@ -295,6 +327,7 @@ export default function SchemaForm({
   cameras = [],
   dynamicOptions = {},
   errors = [],
+  lockedCamera = null,
 }) {
   const requiredSet = useMemo(
     () => new Set(Array.isArray(schema?.required) ? schema.required : []),
@@ -323,7 +356,7 @@ export default function SchemaForm({
               field={field}
               value={value?.[key]}
               onChange={setField(key)}
-              options={{ cameras, dynamicOptions, requiredSet }}
+              options={{ cameras, dynamicOptions, requiredSet, lockedCamera }}
               error={fieldError(errors, key)}
             />
           </div>
