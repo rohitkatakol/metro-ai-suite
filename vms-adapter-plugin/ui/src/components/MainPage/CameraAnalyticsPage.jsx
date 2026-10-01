@@ -23,7 +23,7 @@ import Header from '@/components/Navbar';
 import AnalyticsEnginePanel from './AnalyticsEnginePanel';
 import AnalysisResultsPanel from './AnalysisResultsPanel';
 
-import { listCameras, stopAnalyticsAppRun, listAnalyticsAppRuns } from '@/services/api';
+import { listCameras, discoverCameras, setCameraEnabled, stopAnalyticsAppRun, listAnalyticsAppRuns } from '@/services/api';
 import { useHealth } from '@/hooks';
 
 export default function CameraAnalyticsPage({ cameraId }) {
@@ -37,20 +37,38 @@ export default function CameraAnalyticsPage({ cameraId }) {
 
   const engineStatus = useHealth();
 
-  // Resolve the camera from the persisted camera list on mount.
+  // Resolve the camera from the persisted camera list on mount, and auto-enable it —
+  // this page is the camera's dedicated entry point, so it shouldn't require a trip
+  // to the main dashboard to flip the enable toggle first.
   useEffect(() => {
     let cancelled = false;
-    listCameras()
-      .then((cams) => {
+    (async () => {
+      try {
+        let cams = await listCameras();
+        let found = cams.find((c) => c.camera_id === cameraId);
+        // Not persisted yet (e.g. first visit before anyone ran Discover) — trigger an
+        // active NVR scan ourselves instead of forcing the user to the main dashboard.
+        if (!found) {
+          cams = await discoverCameras();
+          found = cams.find((c) => c.camera_id === cameraId);
+        }
         if (cancelled) return;
-        const found = cams.find((c) => c.camera_id === cameraId);
-        setCamera(found ?? null);
-        if (!found) setLoadError('not_found');
-      })
-      .catch((err) => {
+        if (!found) { setLoadError('not_found'); return; }
+        if (!found.enabled) {
+          try {
+            await setCameraEnabled([cameraId], true);
+            found.enabled = true;
+          } catch {
+            // Non-fatal — the locked camera field still works regardless of the enabled flag.
+          }
+        }
+        if (!cancelled) setCamera(found);
+      } catch (err) {
         if (!cancelled) setLoadError(err.message ?? String(err));
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [cameraId]);
 
@@ -167,7 +185,7 @@ export default function CameraAnalyticsPage({ cameraId }) {
               <AlertTriangle size={32} strokeWidth={1.2} className="text-[#F59E0B]" />
               <span>
                 {loadError === 'not_found'
-                  ? <>Camera <strong className="text-[#6B7BA4]">{cameraId}</strong> was not found. Discover and enable it from the main dashboard first.</>
+                  ? <>Camera <strong className="text-[#6B7BA4]">{cameraId}</strong> was not found on any connected NVR.</>
                   : <>Failed to load camera: {loadError}</>}
               </span>
             </div>
