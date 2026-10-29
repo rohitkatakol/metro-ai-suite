@@ -452,7 +452,7 @@ services:
       - /sys:/sys
       - /dev:/dev
       - ./${SAMPLE_APP}/configs/supervisord/qmmd.conf:/etc/supervisor/conf.d/qmmd.conf:ro
-      - ./${SAMPLE_APP}/configs/metrics-manager/custom-metrics:/app/custom-metrics:ro
+      - ./${SAMPLE_APP}/configs/metrics-manager/custom-metrics/hw_info.py:/app/custom-metrics/hw_info.py:ro
     restart: unless-stopped
     networks:
       - scenescape
