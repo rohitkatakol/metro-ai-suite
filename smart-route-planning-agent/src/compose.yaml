@@ -27,12 +27,25 @@ services:
       ovms:
         condition: service_healthy
         required: false
+      metrics-manager:
+        condition: service_started
     healthcheck:
       test: ["CMD", "uv", "run", "health_check.py", "7860"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
+
+  # Provides Intel hardware info (CPU / GPU / NPU) shown at the top of the UI.
+  metrics-manager:
+    image: intel/metrics-manager:2026.2.0
+    privileged: true
+    volumes:
+      - /sys:/sys
+      - /dev:/dev
+    networks:
+      - routeplanner
     restart: unless-stopped
 
   ovms:
